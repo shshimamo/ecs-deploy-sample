@@ -56,7 +56,7 @@ export class EcsDeploySampleStack extends Stack {
     const alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
       vpc,
       securityGroup: securityGroupELB,
-      internetFacing: true,
+      internetFacing: true, // インターネット向け
       loadBalancerName: 'ALB',
     })
 
@@ -127,6 +127,7 @@ export class EcsDeploySampleStack extends Stack {
     })
 
     // ECS Service
+    // vpcSubnets?: プライベート、アイソレート、パブリックの順で最初に利用可能なもの
     const service = new ecs.Ec2Service(this, 'Service', {
       cluster,
       taskDefinition,
