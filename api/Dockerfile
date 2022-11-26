@@ -12,4 +12,8 @@ RUN chmod +x /usr/bin/entrypoint.sh
 ENTRYPOINT ["entrypoint.sh"]
 EXPOSE 3000
 
-CMD ["rails", "server", "-b", "0.0.0.0"]
+ENV RAILS_ENV=production
+
+VOLUME /usr/src/app/
+
+CMD bin/sh -c "bundle exec rails s -p 3000 -e production"
