@@ -1,9 +1,16 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
+import {RemovalPolicy, SecretValue, Stack, StackProps} from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import {DockerImageAsset} from "aws-cdk-lib/aws-ecr-assets";
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as autoscaling from "aws-cdk-lib/aws-autoscaling";
-import { Construct } from 'constructs';
+import * as rds from 'aws-cdk-lib/aws-rds';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+
+import * as ecrdeploy from 'cdk-ecr-deployment';
+import * as path from 'path';
 
 export class EcsDeploySampleStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -50,7 +57,45 @@ export class EcsDeploySampleStack extends Stack {
       description: 'Security group APP',
       securityGroupName: 'SGAPP',
     })
-    securityGroupAPP.addIngressRule(securityGroupELB, ec2.Port.tcp(80), 'Allow HTTP traffic from the ELB')
+    securityGroupAPP.addIngressRule(securityGroupELB, ec2.Port.tcp(3000), 'Allow HTTP traffic from the ELB')
+
+    // Security Group PostgreSQL
+    const securityGroupRDS = new ec2.SecurityGroup(this, 'SecurityGroupRDS', {
+      vpc,
+      description: 'Security group RDS',
+      securityGroupName: 'SGRDS',
+    })
+    securityGroupRDS.addIngressRule(securityGroupAPP, ec2.Port.tcp(5432), 'Allow PostgreSQL traffic from the APP')
+
+    // SecretManager
+    const databaseCredentialSecret = new secretsmanager.Secret(this, 'databaseCredentialSecret', {
+      secretName: "postgresql",
+      generateSecretString: {
+        excludeCharacters: '"@/\\\'',
+        passwordLength: 16,
+        excludePunctuation: true,
+        includeSpace: false,
+        secretStringTemplate: JSON.stringify({
+          username: 'dbuser',
+        }),
+        generateStringKey: 'password',
+      }
+    })
+
+    // RDS for PostgreSQL
+    const postgresql = new rds.DatabaseInstance(this, 'postgresql', {
+      engine: rds.DatabaseInstanceEngine.POSTGRES,
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_ISOLATED
+      },
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
+      securityGroups: [securityGroupRDS],
+      // multiAz: true,
+      databaseName: 'ecs_deploy_sample',
+      removalPolicy: RemovalPolicy.DESTROY,
+      credentials: rds.Credentials.fromSecret(databaseCredentialSecret),
+    })
 
     // Application Load Balancer
     const alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
@@ -69,12 +114,30 @@ export class EcsDeploySampleStack extends Stack {
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
       port: 80,
+      // port: 3000, // TODO
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
     })
 
     listener.addTargetGroups('TargetGroup', {
       targetGroups: [targetGroup],
+    })
+
+    // ECR image
+    const asset = new DockerImageAsset(this, 'DockerImageAsset', {
+      directory: path.join(__dirname, '..', 'api'),
+    })
+
+    // ECR
+    const repository = new ecr.Repository(this, 'Repository', {
+      repositoryName: 'ecs-deploy-sample-rails',
+      imageScanOnPush: true,
+    })
+
+    // ECR deployment
+    new ecrdeploy.ECRDeployment(this, 'ECRDeployment', {
+      src: new ecrdeploy.DockerImageName(asset.imageUri),
+      dest: new ecrdeploy.DockerImageName(`${repository.repositoryUri}:latest`),
     })
 
     // ECS cluster
@@ -116,13 +179,24 @@ export class EcsDeploySampleStack extends Stack {
 
     const container = taskDefinition.addContainer('Container', {
       image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+      // image: ecs.ContainerImage.fromEcrRepository(repository), // TODO
       memoryLimitMiB: 256,
       cpu: 256,
+      // TODO
+      // environment: {
+      //   DB_HOST: postgresql.instanceEndpoint.hostname,
+      //   DB_PORT: String(postgresql.instanceEndpoint.port),
+      //   DB_NAME: 'ecs_deploy_sample',
+      //   DB_USER: databaseCredentialSecret.secretValueFromJson('username').unsafeUnwrap(),
+      //   APP_DATABASE_PASSWORD: databaseCredentialSecret.secretValueFromJson('password').unsafeUnwrap(),
+      // },
     })
 
     container.addPortMappings({
       hostPort: 80,
       containerPort: 80,
+      // hostPort: 3000, // TODO
+      // containerPort: 3000, // TODO
       protocol: ecs.Protocol.TCP,
     })
 
