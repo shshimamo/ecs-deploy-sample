@@ -17,6 +17,11 @@ services:
       - "3000:3000"
     depends_on:
       - db
+    environment:
+      DB_HOST: 'db'
+      DB_DATABASE: 'ecs-deploy-sample_production'
+      DB_USER: 'postgres'
+      MYAPP_DATABASE_PASSWORD: 'postgres'
 
 volumes:
   bundle-install:

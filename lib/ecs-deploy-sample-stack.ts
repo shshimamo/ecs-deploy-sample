@@ -113,8 +113,7 @@ export class EcsDeploySampleStack extends Stack {
     // Target Group
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
-      port: 80,
-      // port: 3000, // TODO
+      port: 3000,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
     })
@@ -178,25 +177,22 @@ export class EcsDeploySampleStack extends Stack {
     })
 
     const container = taskDefinition.addContainer('Container', {
-      image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
-      // image: ecs.ContainerImage.fromEcrRepository(repository), // TODO
+      image: ecs.ContainerImage.fromEcrRepository(repository),
       memoryLimitMiB: 256,
       cpu: 256,
-      // TODO
-      // environment: {
-      //   DB_HOST: postgresql.instanceEndpoint.hostname,
-      //   DB_PORT: String(postgresql.instanceEndpoint.port),
-      //   DB_NAME: 'ecs_deploy_sample',
-      //   DB_USER: databaseCredentialSecret.secretValueFromJson('username').unsafeUnwrap(),
-      //   APP_DATABASE_PASSWORD: databaseCredentialSecret.secretValueFromJson('password').unsafeUnwrap(),
-      // },
+      environment: {
+        DB_HOST: postgresql.instanceEndpoint.hostname,
+        DB_PORT: String(postgresql.instanceEndpoint.port),
+        DB_NAME: 'ecs_deploy_sample',
+        DB_USER: databaseCredentialSecret.secretValueFromJson('username').unsafeUnwrap(),
+        APP_DATABASE_PASSWORD: databaseCredentialSecret.secretValueFromJson('password').unsafeUnwrap(),
+      },
+      logging: new ecs.AwsLogDriver({ streamPrefix: 'ecs-deploy-sample-stack-container' }),
     })
 
     container.addPortMappings({
-      hostPort: 80,
-      containerPort: 80,
-      // hostPort: 3000, // TODO
-      // containerPort: 3000, // TODO
+      hostPort: 3000,
+      containerPort: 3000,
       protocol: ecs.Protocol.TCP,
     })
 
